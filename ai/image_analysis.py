@@ -7,9 +7,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from .serializers import ImageAnalysisResultSerializer
 from payment.utils import deduct_analysis
-from payment.models import analysesBalance
+from payment.models import AnalysisCreditTransaction, OneTimePaymentTransaction, analysesBalance
 from payment.paymentpermission import HasActiveSubscription
 from django.db import transaction
+from django.utils import timezone
+from django.db.models import Q
 
 
 class ImageAnalysis(APIView):
@@ -25,9 +27,23 @@ class ImageAnalysis(APIView):
                 "details": "Please subscribe to a plan to use this feature"
             }, status=402)
 
-        is_unlimited = balance_obj.balance >= 999999
+        user_credits_this_month = AnalysisCreditTransaction.objects.filter(
+            user=request.user,
+            type="subscription",
+            created_at__month=timezone.now().month,
+            created_at__year=timezone.now().year
+            )
+        user_credits_onetime = OneTimePaymentTransaction.get_balance_for_user(user = request.user)
+        
+        if user_credits_this_month.exists():
+            if user_credits_onetime == 0:
+                return Response({
+                    "message": "Monthly analysis credit already used",
+                    "details": "You have already used your monthly analysis credit. Please purchase one-time credits for extra analyses."
+                }, status=402)
 
-        if not is_unlimited and balance_obj.balance <= 0:
+
+        if not balance_obj.balance > 0:
             return Response({
                 "message": "Insufficient analysis credits",
                 "details": "Please subscribe or upgrade your plan"
@@ -59,9 +75,19 @@ class ImageAnalysis(APIView):
 
         # Everything succeeded → now deduct safely
         with transaction.atomic():
-            if not is_unlimited:
+            if data.get("face") == 1:
+                if user_credits_this_month.exists():
+                    OneTimePaymentTransaction.objects.create(
+                        user=request.user,
+                        credits=1,
+                        type="use"
+                    )
                 balance_obj.balance -= 1
                 balance_obj.save()
+                # create a transaction record
+                AnalysisCreditTransaction.objects.create(
+                    user=request.user
+                    )
 
             payload = {
                 "user": request.user.id,

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Plan, Subscription, WebhookEvent
+from .models import *
 
 
 @admin.register(Plan)
@@ -19,7 +19,7 @@ class SubscriptionAdmin(admin.ModelAdmin):
         "status",
         "stripe_customer_id",
         "stripe_subscription_id",
-        "trial_end",
+        "auto_renew",
         "current_period_end",
         "created_at",
     )
@@ -43,3 +43,25 @@ class WebhookEventAdmin(admin.ModelAdmin):
     search_fields = ("event_id", "type")
     readonly_fields = ("event_id", "type", "data", "received_at")
     ordering = ("-received_at",)
+
+
+
+@admin.register(AnalysisCreditTransaction)
+class AnalysisCreditTransactionAdmin(admin.ModelAdmin):
+    list_display = ("user", "use_credits", "type", "reason", "created_at")
+    search_fields = ("user__username", "user__email", "reason")
+    readonly_fields = ("created_at",)
+    ordering = ("-created_at",)
+    
+    
+@admin.register(analysesBalance)
+class AnalysesBalanceAdmin(admin.ModelAdmin):
+    list_display = ("user", "balance")
+    search_fields = ("user__username", "user__email")
+    ordering = ("-balance",)
+    
+@admin.register(OneTimePaymentTransaction)
+class OneTimePaymentTransactionAdmin(admin.ModelAdmin):
+    list_display = ("user", "credits", "type", "created_at", "updated_at")
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("-created_at",)

@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from .userpermissions import IsSuperUser
-from payment.models import analysesBalance
+from payment.models import *
 
 from .serializers import *
 
@@ -197,9 +197,11 @@ class UserDetailView(APIView):
     def get(self, request, *args, **kwargs):
         user = request.user
         serializer = UserDetailSerializer(user)
+        auto_renewal = Subscription.objects.filter(user=user).first()
         data = {
                 "user": serializer.data,
-                "balance": analysesBalance.objects.get_or_create(user=user)[0].balance
+                "balance": analysesBalance.objects.get_or_create(user=user)[0].balance,
+                "auto_renew": auto_renewal.auto_renew if auto_renewal else None
         }
         return Response(data, status=status.HTTP_200_OK)
 

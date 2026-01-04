@@ -897,3 +897,58 @@ class UserAnalysisBalanceView(APIView):
                 "is_unlimited": False,
                 "message": "No active subscription"
             }, status=200)
+
+
+
+class AutoRenewalView(APIView):
+
+    def post(self, request):
+        auto_renew = request.data.get("auto_renew")
+
+        if auto_renew is None:
+            return Response(
+                {"error": "auto_renew field is required"},
+                status=400
+            )
+
+        if isinstance(auto_renew, str):
+            auto_renew = auto_renew.lower() == "true"
+
+        try:
+            subscription = Subscription.objects.get(
+                user=request.user,
+                status__in=["active", "trialing"]
+            )
+        except Subscription.DoesNotExist:
+            return Response(
+                {"error": "No active subscription found"},
+                status=404
+            )
+
+        try:
+            stripe.Subscription.modify(
+                subscription.stripe_subscription_id,
+                cancel_at_period_end=not auto_renew
+            )
+
+            subscription.auto_renew = auto_renew
+            subscription.save(update_fields=["auto_renew"])
+
+            return Response({
+                "message": "Auto-renewal updated successfully",
+                "subscription_id": subscription.id,
+                "auto_renew": subscription.auto_renew
+            }, status=200)
+
+        except stripe.error.StripeError as e:
+            return Response(
+                {"error": f"Stripe error: {str(e)}"},
+                status=400
+            )
+
+
+
+
+
+
+
