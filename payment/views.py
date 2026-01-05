@@ -264,11 +264,13 @@ class CreateSubscriptionView(APIView):
                     'metadata': {
                         'user_id': request.user.id,
                         'plan_id': plan.id,
+                        'type': 'subscription',
                     }
                 },
                 metadata={
                     'user_id': request.user.id,
                     'plan_id': plan.id,
+                    'type': 'subscription',
                 },
                 # Enable automatic tax calculation (optional)
                 automatic_tax={'enabled': False},
@@ -623,42 +625,69 @@ def stripe_webhook(request):
     try:
         
         if event_type == "checkout.session.completed":
-            
-            # Get user from metadata
-            metadata = obj.get("metadata", {})
+
+            metadata = obj.get("metadata", {}) or {}
+            payment_type = metadata.get("type")
             user_id = metadata.get("user_id")
             plan_id = metadata.get("plan_id")
-            
-            if user_id and obj.get("subscription"):
+
+            if payment_type == "one_time_credits":
+                try:
+                    num_credits = int(metadata.get("num_credits", 0))
+                except (TypeError, ValueError):
+                    num_credits = 0
+
+                if not user_id or num_credits <= 0:
+                    logger.warning(
+                        f"⚠️ Missing user_id or invalid num_credits in metadata: user_id={user_id}, num_credits={metadata.get('num_credits')}"
+                    )
+                else:
+                    try:
+                        user = User.objects.get(id=user_id)
+                        balance_obj, _ = analysesBalance.objects.get_or_create(user=user)
+                        balance_obj.balance += num_credits
+                        balance_obj.save()
+
+                        OneTimePaymentTransaction.objects.create(
+                            user=user,
+                            credits=num_credits,
+                            type="purchase",
+                        )
+
+                        logger.info(f"✅ Added {num_credits} one-time credits to user {user_id}")
+                    except Exception as e:
+                        logger.error(f"❌ Error adding one-time credits: {str(e)}")
+
+            elif payment_type == "subscription" or obj.get("subscription"):
                 try:
                     # Retrieve the subscription from Stripe
                     stripe_subscription = stripe.Subscription.retrieve(obj["subscription"])
-                    
+
                     # Update the pending subscription in our database
                     subscription = Subscription.objects.filter(
                         user_id=user_id,
                         status="pending"
                     ).first()
-                    
+
                     # If no pending subscription, try to get any subscription for this user
                     if not subscription:
                         subscription = Subscription.objects.filter(
                             user_id=user_id,
                             stripe_subscription_id__isnull=True
                         ).first()
-                    
+
                     if subscription:
                         # Safely handle timestamps
                         trial_end = None
                         current_period_end = None
-                        
+
                         # Get trial_end from subscription level
                         trial_end_timestamp = stripe_subscription.get('trial_end')
                         if trial_end_timestamp:
                             trial_end = make_aware(
                                 datetime.datetime.fromtimestamp(trial_end_timestamp)
                             )
-                        
+
                         # Get current_period_end from items (not at subscription level)
                         items = stripe_subscription.get('items', {})
                         if items and items.get('data'):
@@ -668,14 +697,13 @@ def stripe_webhook(request):
                                 current_period_end = make_aware(
                                     datetime.datetime.fromtimestamp(current_period_end_timestamp)
                                 )
-                        
+
                         subscription.stripe_subscription_id = stripe_subscription.id
                         subscription.status = stripe_subscription.get('status', 'active')
                         subscription.trial_end = trial_end
                         subscription.current_period_end = current_period_end
                         subscription.save()
-                        
-                        
+
                         # Process referral benefits after successful subscription creation
                         try:
                             user = User.objects.get(id=user_id)
@@ -686,7 +714,7 @@ def stripe_webhook(request):
                             logger.error(f"❌ Error in referral processing: {str(e)}")
                             import traceback
                             logger.error(f"Traceback: {traceback.format_exc()}")
-                        
+
                         # Update analysis balance after successful subscription
                         try:
                             if subscription.plan:
@@ -698,26 +726,25 @@ def stripe_webhook(request):
                             logger.error(f"❌ Error updating analysis balance: {str(e)}")
                             import traceback
                             logger.error(f"Traceback: {traceback.format_exc()}")
-                            
+
                     else:
                         logger.warning(f"⚠️ No subscription found for user {user_id}")
                         logger.warning(f"⚠️ Available subscriptions for user: {Subscription.objects.filter(user_id=user_id).count()}")
                         # Try to create or update subscription based on Stripe data
                         try:
                             user = User.objects.get(id=user_id)
-                            plan_id = metadata.get('plan_id')
                             if plan_id:
                                 plan = Plan.objects.get(id=plan_id)
-                                
+
                                 trial_end = None
                                 current_period_end = None
-                                
+
                                 trial_end_timestamp = stripe_subscription.get('trial_end')
                                 if trial_end_timestamp:
                                     trial_end = make_aware(
                                         datetime.datetime.fromtimestamp(trial_end_timestamp)
                                     )
-                                
+
                                 items = stripe_subscription.get('items', {})
                                 if items and items.get('data'):
                                     first_item = items['data'][0]
@@ -726,7 +753,7 @@ def stripe_webhook(request):
                                         current_period_end = make_aware(
                                             datetime.datetime.fromtimestamp(current_period_end_timestamp)
                                         )
-                                
+
                                 subscription = Subscription.objects.create(
                                     user=user,
                                     plan=plan,
@@ -736,19 +763,21 @@ def stripe_webhook(request):
                                     trial_end=trial_end,
                                     current_period_end=current_period_end
                                 )
-                                
+
                                 balance_obj = update_user_analysis_balance(user, plan)
                         except Exception as create_error:
                             logger.error(f"❌ Error creating subscription from webhook: {str(create_error)}")
                             import traceback
                             logger.error(f"Traceback: {traceback.format_exc()}")
-                        
+
                 except Exception as e:
                     logger.error(f"❌ Error processing checkout.session.completed: {str(e)}")
                     import traceback
                     logger.error(f"Traceback: {traceback.format_exc()}")
             else:
-                logger.warning(f"⚠️ Missing required data - user_id: {user_id}, subscription: {obj.get('subscription')}")
+                logger.warning(
+                    f"⚠️ Missing required data - user_id: {user_id}, subscription: {obj.get('subscription')}, type: {payment_type}"
+                )
 
         elif event_type == "customer.subscription.created":
             
