@@ -204,11 +204,10 @@ class UserDetailView(APIView):
     def get(self, request, *args, **kwargs):
         user = request.user
         serializer = UserDetailSerializer(user)
-        # auto_renewal = Subscription.objects.filter(user=user).first()
+        balance = AnalysisCreditTransaction.get_balance(user=user)
         data = {
                 "user": serializer.data,
-                # "balance": analysesBalance.objects.get_or_create(user=user)[0].balance,
-                # "auto_renew": auto_renewal.auto_renew if auto_renewal else None
+                "balance": balance,
         }
         return Response(data, status=status.HTTP_200_OK)
 
