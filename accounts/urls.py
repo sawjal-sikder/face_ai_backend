@@ -2,8 +2,11 @@ from django.urls import path
 from rest_framework_simplejwt.views import (TokenObtainPairView, TokenRefreshView)
 from .social_auth import *
 from .views import *
+from .FirebaseLoginView import FirebaseLoginView
 
 urlpatterns = [
+    # login with google
+    path('auth/firebase/', FirebaseLoginView.as_view(), name='firebase_login'),
     path('auth/register/', RegisterView.as_view(), name='registration'),
     path('auth/user/', UserDetailView.as_view(), name='user_detail'),
     path('auth/active/user/', UserRegistrationVerifyCodeView.as_view(), name='verify_code'),
