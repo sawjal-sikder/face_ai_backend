@@ -17,6 +17,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Dockerfile
+COPY accounts/glowtrack-8bd39-firebase-adminsdk-fbsvc-871e7825e9.json /app/accounts/
+
 # Copy project code
 COPY . /app/
 

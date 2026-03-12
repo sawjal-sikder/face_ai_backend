@@ -76,3 +76,4 @@ python-dateutil
 six
 packaging
 typing_extensions
+firebase-admin
