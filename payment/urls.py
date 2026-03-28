@@ -1,5 +1,7 @@
 from django.urls import path #type:ignore
 
+from payment.StripeSubscription import CreateSubscriptionView
+from payment.StripeWebhook import StripeWebhookView
 from payment.paypal_event_views import AnalysisCreditTransactionViews, PaypalEventViews, PlanDetailView, PlanViews # type: ignore
 from .views import *
 # from .onetimepayment import PurchaseOneTimeCreditsView
@@ -35,5 +37,8 @@ urlpatterns = [
       path("stripe/plans/", PlanViews.as_view(), name="stripe-plan-list-create"),
       path("stripe/plans/<int:id>/", PlanDetailView.as_view(), name="stripe-plan-update"),
       
-      
+      # create subscription session
+      path("stripe/create-subscription/", CreateSubscriptionView.as_view(), name="stripe-create-subscription"),
+      # stripe webhook
+      path("webhook/", StripeWebhookView.as_view(), name="stripe-webhook"),
 ]
