@@ -13,9 +13,11 @@ class CreateSubscriptionView(APIView):
 
     def post(self, request):
         plan_id = request.data.get("plan_id")
-        success_url = os.getenv("BASE_URL_FRONTEND") + "/"
-        cancel_url = os.getenv("BASE_URL_FRONTEND") + "/"
-        
+        success_path = request.data.get("success_path")
+        cancel_path = request.data.get("cancel_path")
+        success_url = os.getenv("BASE_URL_FRONTEND") + success_path
+        cancel_url = os.getenv("BASE_URL_FRONTEND") + cancel_path
+
         if not plan_id:
             return Response({"message": "plan_id is required"}, status=400)
         
